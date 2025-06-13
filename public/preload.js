@@ -1,23 +1,20 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Белый список каналов, по которым разрешено общение.
-const validChannels = ['to-main', 'from-main'];
+const validInvokeChannels = [ 'get-wallets', 'add-wallet', 'delete-wallet', 'place-bid' ];
+const validOnChannels = [ 'bid-status-update' ]; // Канал для получения статусов
 
-contextBridge.exposeInMainWorld('api', {
-  // Функция для отправки сообщений из React в Electron
-  send: (channel, data) => {
-    if (validChannels.includes(channel)) {
-      ipcRenderer.send(channel, data);
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Для запросов "вопрос-ответ"
+  invoke: (channel, ...args) => {
+    if (validInvokeChannels.includes(channel)) {
+      return ipcRenderer.invoke(channel, ...args);
     }
   },
-  // Функция для получения сообщений в React из Electron
+  // Для прослушивания событий от бэкенда
   receive: (channel, func) => {
-    if (validChannels.includes(channel)) {
-      // Убираем обертку события и передаем только данные
+    if (validOnChannels.includes(channel)) {
       const subscription = (event, ...args) => func(...args);
       ipcRenderer.on(channel, subscription);
-      
-      // Возвращаем функцию для отписки, чтобы избежать утечек памяти
       return () => {
         ipcRenderer.removeListener(channel, subscription);
       };

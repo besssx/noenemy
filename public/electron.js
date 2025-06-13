@@ -2,124 +2,161 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 require('dotenv').config();
-const axios = require('axios');
-
-// Клиент SDK все еще нужен для будущих ДЕЙСТВИЙ (отправки ставок)
-const { createClient } = require('@reservoir0x/reservoir-sdk');
+const { createClient, getClient } = require('@reservoir0x/reservoir-sdk');
+const { 
+  createWalletClient, 
+  createPublicClient,
+  http, 
+  formatEther,
+  parseEther 
+} = require('viem');
+const { privateKeyToAccount } = require('viem/accounts');
+const { base } = require('viem/chains');
 
 const store = new Store();
 
-const reservoirClient = createClient({
+if (!process.env.RESERVOIR_API_KEY || !process.env.OPENSEA_API_KEY) {
+  console.error("ОШИБКА: RESERVOIR_API_KEY или OPENSEA_API_KEY не найдены в .env файле!");
+}
+
+// --- КЛИЕНТЫ ---
+createClient({
   chains: [{
-    id: 1,
-    baseApiUrl: 'https://api.reservoir.tools',
+    id: 8453, // Base
+    baseApiUrl: 'https://api-base.reservoir.tools',
     apiKey: process.env.RESERVOIR_API_KEY,
   }],
   source: 'noenemy.app'
 });
 
-const reservoirApi = axios.create({
-  baseURL: 'https://api.reservoir.tools',
-  headers: {
-    'accept': '*/*',
-    'x-api-key': process.env.RESERVOIR_API_KEY
-  }
+const publicClient = createPublicClient({
+  chain: base,
+  transport: http('https://mainnet.base.org'),
 });
-
-// --- ЛОГИКА ОПРОСА (POLLING) ---
-
-let pollingInterval; // Переменная для хранения нашего интервала
-let lastKnownAskId = null; // ID последнего виденного нами ордера
-
-function startPollingAsks(win) {
-  // Если уже есть активный цикл, останавливаем его перед запуском нового
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-  }
-
-  console.log('Запуск опроса (polling) новых ордеров...');
-  win.webContents.send('from-main', { type: 'ws-status', payload: 'Опрос запущен (интервал: 1.5 сек)' });
-
-
-  pollingInterval = setInterval(async () => {
-    try {
-      const collectionId = '0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D'; // BAYC
-      // Запрашиваем 5 самых новых ордеров, отсортированных по времени создания
-      const response = await reservoirApi.get(`/orders/asks/v6?contracts=${collectionId}&sortBy=createdAt&limit=5`);
-      const asks = response.data.orders;
-
-      if (!asks || asks.length === 0) {
-        return; // Если ордеров нет, ничего не делаем
-      }
-
-      // Самый свежий ордер будет первым в списке
-      const latestAsk = asks[0];
-      
-      // Если это первый запуск, просто запоминаем ID
-      if (lastKnownAskId === null) {
-        lastKnownAskId = latestAsk.id;
-        console.log(`Инициализация. Последний известный ордер: ${lastKnownAskId}`);
-        return;
-      }
-
-      // Ищем реально новые ордера, которых мы еще не видели
-      const newAsks = [];
-      for (const ask of asks) {
-        if (ask.id === lastKnownAskId) {
-          break; // Мы дошли до уже известных ордеров, останавливаемся
-        }
-        newAsks.push(ask);
-      }
-
-      if (newAsks.length > 0) {
-        console.log(`Обнаружено ${newAsks.length} новых ордеров!`);
-        // Обновляем ID последнего известного ордера
-        lastKnownAskId = newAsks[0].id;
-
-        // Отправляем новые ордера на фронтенд
-        // Мы переворачиваем массив, чтобы обработать их от старых к новым
-        for (const newAsk of newAsks.reverse()) {
-            win.webContents.send('from-main', { type: 'ws-event', payload: newAsk });
-        }
-      }
-
-    } catch (error) {
-      console.error('Ошибка при опросе ордеров:', error.message);
-    }
-  }, 1500); // Опрашиваем каждые 1.5 секунды, чтобы быть в рамках лимита (2 запроса/сек)
-}
 
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 800,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
-  
-  startPollingAsks(win); // Запускаем наш цикл опроса после создания окна
-  
-  // ... остальной код без изменений
-  const isDev = !app.isPackaged;
-  const startUrl = isDev
-    ? 'http://localhost:5173'
-    : `file://${path.join(__dirname, '../dist/index.html')}`;
 
+  const startUrl = 'http://localhost:5173';
   win.loadURL(startUrl);
-
-  ipcMain.on('to-main', async (event, data) => { /* ... */ });
 }
 
-app.whenReady().then(createWindow);
+function registerIpcHandlers() {
+  // --- УПРАВЛЕНИЕ КОШЕЛЬКАМИ ---
+  ipcMain.handle('get-wallets', async () => {
+    const wallets = store.get('wallets', []);
+    try {
+        const walletsWithBalances = await Promise.all(
+            wallets.map(async (wallet) => {
+                const ethBalance = await publicClient.getBalance({ address: wallet.address });
+                const wethBalance = await publicClient.readContract({
+                  address: '0x4200000000000000000000000000000000000006',
+                  abi: [{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}],
+                  functionName: 'balanceOf',
+                  args: [wallet.address]
+                });
+                return { 
+                    ...wallet, 
+                    ethBalance: parseFloat(formatEther(ethBalance)).toFixed(4),
+                    wethBalance: parseFloat(formatEther(wethBalance)).toFixed(4)
+                };
+            })
+        );
+        return walletsWithBalances;
+    } catch (error) {
+        console.error("Failed to fetch balances:", error);
+        return wallets.map(w => ({ ...w, ethBalance: 'Error', wethBalance: 'Error' }));
+    }
+  });
+
+  ipcMain.handle('add-wallet', async (event, name, privateKey) => {
+    try {
+      const account = privateKeyToAccount(privateKey);
+      const address = account.address;
+      const currentWallets = store.get('wallets', []);
+      if (currentWallets.some(w => w.address === address)) return { success: false, message: 'Кошелек уже существует.' };
+      
+      const updatedWallets = [...currentWallets, { name, address, privateKey }];
+      store.set('wallets', updatedWallets);
+      return { success: true };
+    } catch (error) {
+      return { success: false, message: 'Неверный приватный ключ.' };
+    }
+  });
+
+  ipcMain.handle('delete-wallet', async (event, address) => {
+    const currentWallets = store.get('wallets', []);
+    const updatedWallets = currentWallets.filter(w => w.address !== address);
+    store.set('wallets', updatedWallets);
+    return { success: true };
+  });
+
+  // --- РАЗМЕЩЕНИЕ СТАВОК ---
+  ipcMain.handle('place-bid', async (event, { walletAddress, contractAddress, tokenId, bidPrice, expirationTime }) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return { success: false, message: 'Окно браузера не найдено.'};
+    
+    const wallets = store.get('wallets', []);
+    const targetWallet = wallets.find(w => w.address === walletAddress);
+    if (!targetWallet) return { success: false, message: 'Выбранный кошелек не найден.'};
+
+    try {
+      const account = privateKeyToAccount(targetWallet.privateKey);
+      const walletClient = createWalletClient({ account, chain: base, transport: http() });
+      const reservoirClient = getClient();
+      
+      win.webContents.send('bid-status-update', 'Кошелек создан, формируем валидный ордер для OpenSea...');
+
+      await reservoirClient?.actions.placeBid({
+        wallet: walletClient,
+        bids: [{
+          token: `${contractAddress}:${tokenId}`,
+          weiPrice: parseEther(bidPrice).toString(),
+          orderbook: 'opensea',
+          orderKind: 'seaport-v1.5',
+          currency: '0x4200000000000000000000000000000000000006',
+          expirationTime: expirationTime,
+          automatedRoyalties: true,
+          options: {
+            "openseaApiKey": process.env.OPENSEA_API_KEY,
+          }
+        }],
+        onProgress: (steps) => {
+          const currentStep = steps.find(step => step.status === 'incomplete');
+          if (currentStep) {
+            console.log('Шаг выполнения ставки:', currentStep.action);
+            win.webContents.send('bid-status-update', `Выполняется: ${currentStep.action}`);
+          }
+        },
+      });
+      
+      return { success: true, message: 'Ставка успешно размещена через SDK (с параметрами OpenSea)!' };
+
+    } catch (e) {
+      console.error('Произошла ошибка при размещении ставки через SDK:', e);
+      return { success: false, message: e.message };
+    }
+  });
+}
+
+app.whenReady().then(() => {
+  registerIpcHandlers();
+  createWindow();
+  
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
 
 app.on('window-all-closed', () => {
-    if (pollingInterval) clearInterval(pollingInterval); // Очищаем интервал при закрытии
-    if (process.platform !== 'darwin') app.quit();
-});
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (process.platform !== 'darwin') app.quit();
 });

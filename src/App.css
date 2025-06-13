@@ -1,42 +1,98 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #1a1a1a; /* Чуть темнее фон */
+}
+
+body {
+  margin: 0;
+}
+
+.layout {
+  display: flex;
+  height: 100vh;
+}
+
+.navbar {
+  width: 220px;
+  background-color: #242424;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #333;
+}
+
+.navbar-header h2 {
+  margin: 0 0 30px 0;
   text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.nav-links {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.nav-link {
+  display: block;
+  padding: 10px 15px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: #ccc;
+  transition: background-color 0.2s, color 0.2s;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+.nav-link:hover {
+  background-color: #333;
+  color: #fff;
 }
 
-.card {
-  padding: 2em;
+.nav-link.active {
+  background-color: #646cff;
+  color: #fff;
+  font-weight: 500;
 }
 
-.read-the-docs {
-  color: #888;
+.content {
+  flex-grow: 1;
+  padding: 40px;
+  overflow-y: auto;
+}
+
+/* --- Стили для таблицы кошельков --- */
+.wallets-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.wallets-table th,
+.wallets-table td {
+  border: 1px solid #444;
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.wallets-table th {
+  background-color: #3a3a3a;
+}
+
+.wallets-table tr:nth-child(even) {
+  background-color: #2f2f2f;
+}
+
+.button-danger {
+  background-color: #ff4d4d;
+  color: white;
+  border-color: #ff4d4d;
+}
+
+.button-danger:hover {
+  border-color: #ff6666;
 }
