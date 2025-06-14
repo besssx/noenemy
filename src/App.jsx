@@ -5,7 +5,8 @@ import DashboardPage from './pages/DashboardPage';
 import TasksPage from './pages/TasksPage';
 import CollectionsPage from './pages/CollectionsPage';
 import LogsPage from './pages/LogsPage';
-// import WalletsPage from './pages/WalletsPage'; // <-- УДАЛЯЕМ
+import WalletsPage from './pages/WalletsPage';
+import TempRealBidsPage from './pages/TempRealBidsPage';
 
 function App() {
   return (
@@ -15,7 +16,8 @@ function App() {
         <Route path="tasks" element={<TasksPage />} />
         <Route path="collections" element={<CollectionsPage />} />
         <Route path="logs" element={<LogsPage />} />
-        {/* Роут для /wallets удален */}
+        <Route path="wallets" element={<WalletsPage />} />
+        <Route path="temp-bids" element={<TempRealBidsPage />} />
       </Route>
     </Routes>
   );

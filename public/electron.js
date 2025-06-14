@@ -17,55 +17,28 @@ const axios = require('axios');
 
 const store = new Store();
 
-// --- ДИНАМИЧЕСКАЯ КОНФИГУРАЦИЯ СЕТИ ---
-const chainName = process.env.CHAIN_NAME || 'base';
-let chainConfig;
+// --- КОНФИГУРАЦИЯ СЕТЕЙ ---
+const chainConfigs = {
+  mainnet: { name: 'mainnet', id: 1, viemChain: mainnet, reservoirBaseUrl: 'https://api.reservoir.tools', publicRpcUrl: process.env.ALCHEMY_MAINNET_RPC_URL, wethAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' },
+  base: { name: 'base', id: 8453, viemChain: base, reservoirBaseUrl: 'https://api-base.reservoir.tools', publicRpcUrl: process.env.ALCHEMY_BASE_RPC_URL || 'https://mainnet.base.org', wethAddress: '0x4200000000000000000000000000000000000006' }
+};
 
-if (chainName === 'mainnet') {
-  chainConfig = {
-    id: 1,
-    viemChain: mainnet,
-    reservoirBaseUrl: 'https://api.reservoir.tools',
-    publicRpcUrl: process.env.ALCHEMY_MAINNET_RPC_URL,
-    wethAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
-  };
-  console.log('Приложение настроено для работы в сети: Ethereum Mainnet');
-} else { // по умолчанию 'base'
-  chainConfig = {
-    id: 8453,
-    viemChain: base,
-    reservoirBaseUrl: 'https://api-base.reservoir.tools',
-    publicRpcUrl: process.env.ALCHEMY_BASE_RPC_URL || 'https://mainnet.base.org',
-    wethAddress: '0x4200000000000000000000000000000000000006'
-  };
-  console.log('Приложение настроено для работы в сети: Base');
-}
+const activeChainName = process.env.CHAIN_NAME || 'base';
+const activeChainConfig = chainConfigs[activeChainName];
+console.log(`Приложение настроено для работы в сети: ${activeChainName}`);
 
-if (!process.env.RESERVOIR_API_KEY || !process.env.ALCHEMY_MAINNET_RPC_URL) {
-  console.error("ОШИБКА: Ключи API или RPC URL для Mainnet не найдены в .env файле!");
+if (!process.env.RESERVOIR_API_KEY || !process.env.OPENSEA_API_KEY || !process.env.ALCHEMY_MAINNET_RPC_URL) {
+  console.error("ОШИБКА: Один или несколько ключей API/RPC URL не найдены в .env файле!");
 }
 
 // --- КЛИЕНТЫ ---
 createClient({
-  chains: [{
-    id: chainConfig.id,
-    baseApiUrl: chainConfig.reservoirBaseUrl,
-    apiKey: process.env.RESERVOIR_API_KEY,
-  }],
+  chains: Object.values(chainConfigs).map(c => ({ id: c.id, baseApiUrl: c.reservoirBaseUrl, apiKey: process.env.RESERVOIR_API_KEY, })),
   source: 'noenemy.app'
 });
 
-const publicClient = createPublicClient({
-  chain: chainConfig.viemChain,
-  transport: http(chainConfig.publicRpcUrl),
-});
-
-const mainnetPublicClient = createPublicClient({
-  chain: mainnet,
-  transport: http(process.env.ALCHEMY_MAINNET_RPC_URL),
-});
-
-// --- ГЛАВНАЯ ЛОГИКА ---
+const publicClient = createPublicClient({ chain: activeChainConfig.viemChain, transport: http(activeChainConfig.publicRpcUrl) });
+const mainnetPublicClient = createPublicClient({ chain: mainnet, transport: http(process.env.ALCHEMY_MAINNET_RPC_URL) });
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -80,39 +53,27 @@ function createWindow() {
 
   const startUrl = 'http://localhost:5173';
   win.loadURL(startUrl);
-
-  // Запускаем подписку на рыночные данные после создания окна
   startMarketDataSubscription(win);
 }
 
 function startMarketDataSubscription(win) {
   let ethPrice = 'N/A';
+  let lastEthPriceFetch = 0;
 
-  const updateEthPrice = async () => {
-    try {
-      console.log('Обновляем цену ETH...');
-      const ethPriceResponse = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
-      ethPrice = ethPriceResponse.data.ethereum.usd;
-    } catch (error) {
-      console.error('Ошибка при обновлении цены ETH:', error.message);
-    }
-  };
-
-  // Вызываем один раз при запуске, чтобы цена была сразу
-  updateEthPrice();
-  // Затем обновляем по таймеру раз в минуту
-  setInterval(updateEthPrice, 60000); 
-
-  // Следим за блоками для обновления цены на газ
   mainnetPublicClient.watchBlocks({
     onBlock: async (block) => {
       try {
         const gasPriceWei = await mainnetPublicClient.getGasPrice();
         const gasPrice = parseFloat(formatGwei(gasPriceWei)).toFixed(2);
-        console.log(`Новый блок: ${block.number}, Газ Mainnet: ${gasPrice} GWEI`);
-        
-        // Отправляем на фронтенд свежий газ и последнюю известную цену ETH
-        win.webContents.send('market-data-update', { success: true, ethPrice, gasPrice });
+        const now = Date.now();
+        if (now - lastEthPriceFetch > 60000) {
+            const ethPriceResponse = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+            ethPrice = ethPriceResponse.data.ethereum.usd;
+            lastEthPriceFetch = now;
+        }
+        if (!win.isDestroyed()) {
+          win.webContents.send('market-data-update', { success: true, ethPrice, gasPrice });
+        }
       } catch (error) {
         console.error('Ошибка в watchBlocks (getGasPrice):', error.message);
       }
@@ -124,25 +85,17 @@ function registerIpcHandlers() {
   ipcMain.handle('get-wallets', async () => {
     const wallets = store.get('wallets', []);
     try {
-        const walletsWithBalances = await Promise.all(
-            wallets.map(async (wallet) => {
-                const ethBalance = await publicClient.getBalance({ address: wallet.address });
-                const wethBalance = await publicClient.readContract({
-                  address: chainConfig.wethAddress,
-                  abi: [{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}],
-                  functionName: 'balanceOf',
-                  args: [wallet.address]
-                });
-                return { 
-                    ...wallet, 
-                    ethBalance: parseFloat(formatEther(ethBalance)).toFixed(4),
-                    wethBalance: parseFloat(formatEther(wethBalance)).toFixed(4)
-                };
-            })
-        );
-        return walletsWithBalances;
+        return await Promise.all(wallets.map(async (wallet) => {
+            const ethBalance = await publicClient.getBalance({ address: wallet.address });
+            const wethBalance = await publicClient.readContract({
+              address: activeChainConfig.wethAddress,
+              abi: [{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}],
+              functionName: 'balanceOf',
+              args: [wallet.address]
+            });
+            return { ...wallet, ethBalance: parseFloat(formatEther(ethBalance)).toFixed(4), wethBalance: parseFloat(formatEther(wethBalance)).toFixed(4) };
+        }));
     } catch (error) {
-        console.error("Failed to fetch balances:", error);
         return wallets.map(w => ({ ...w, ethBalance: 'Error', wethBalance: 'Error' }));
     }
   });
@@ -153,18 +106,14 @@ function registerIpcHandlers() {
       const address = account.address;
       const currentWallets = store.get('wallets', []);
       if (currentWallets.some(w => w.address === address)) return { success: false, message: 'Кошелек уже существует.' };
-      const updatedWallets = [...currentWallets, { name, address, privateKey }];
-      store.set('wallets', updatedWallets);
+      store.set('wallets', [...currentWallets, { name, address, privateKey }]);
       return { success: true };
-    } catch (error) {
-      return { success: false, message: 'Неверный приватный ключ.' };
-    }
+    } catch (error) { return { success: false, message: 'Неверный приватный ключ.' }; }
   });
 
   ipcMain.handle('delete-wallet', async (event, address) => {
     const currentWallets = store.get('wallets', []);
-    const updatedWallets = currentWallets.filter(w => w.address !== address);
-    store.set('wallets', updatedWallets);
+    store.set('wallets', currentWallets.filter(w => w.address !== address));
     return { success: true };
   });
 
@@ -176,7 +125,7 @@ function registerIpcHandlers() {
     if (!targetWallet) return { success: false, message: 'Выбранный кошелек не найден.'};
     try {
       const account = privateKeyToAccount(targetWallet.privateKey);
-      const walletClient = createWalletClient({ account, chain: chainConfig.viemChain, transport: http() });
+      const walletClient = createWalletClient({ account, chain: activeChainConfig.viemChain, transport: http() });
       const reservoirClient = getClient();
       await reservoirClient?.actions.placeBid({
         wallet: walletClient,
@@ -185,36 +134,78 @@ function registerIpcHandlers() {
           weiPrice: parseEther(bidPrice).toString(),
           orderbook: 'opensea',
           orderKind: 'seaport-v1.5',
-          currency: chainConfig.wethAddress,
+          currency: activeChainConfig.wethAddress,
           expirationTime: expirationTime,
           automatedRoyalties: true,
           options: { "openseaApiKey": process.env.OPENSEA_API_KEY }
         }],
         onProgress: (steps) => {
           const currentStep = steps.find(step => step.status === 'incomplete');
-          if (currentStep) {
-            console.log('Шаг выполнения ставки:', currentStep.action);
-            win.webContents.send('bid-status-update', `Выполняется: ${currentStep.action}`);
-          }
+          if (currentStep) win.webContents.send('bid-status-update', `Выполняется: ${currentStep.action}`);
         },
       });
-      return { success: true, message: `Ставка успешно размещена в сети ${chainName}!` };
-    } catch (e) {
-      console.error('Произошла ошибка при размещении ставки через SDK:', e);
-      return { success: false, message: e.message };
-    }
+      return { success: true, message: `Ставка успешно размещена в сети ${activeChainName}!` };
+    } catch (e) { return { success: false, message: e.message }; }
   });
 
   ipcMain.handle('get-market-data', async () => {
     try {
       const ethPriceResponse = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
-      const ethPrice = ethPriceResponse.data.ethereum.usd;
       const gasPriceWei = await mainnetPublicClient.getGasPrice();
-      const gasPriceGwei = formatGwei(gasPriceWei);
-      return { success: true, ethPrice, gasPrice: parseFloat(gasPriceGwei).toFixed(2) };
+      return { success: true, ethPrice: ethPriceResponse.data.ethereum.usd, gasPrice: parseFloat(formatGwei(gasPriceWei)).toFixed(2) };
+    } catch (error) { return { success: false, ethPrice: 'N/A', gasPrice: 'N/A' }; }
+  });
+
+  ipcMain.handle('get-temp-bids', async () => {
+    const hardcodedAddress = '0x047AA61fB65Df27c219d67025DdAE0683CecC37D';
+    const chainToQuery = chainConfigs['mainnet'];
+    try {
+      const api = axios.create({ baseURL: chainToQuery.reservoirBaseUrl, headers: { 'x-api-key': process.env.RESERVOIR_API_KEY } });
+      const response = await api.get(`/users/${hardcodedAddress}/bids/v1?status=active&limit=50`);
+      const activeBids = response.data.orders;
+      
+      const collectionDataCache = new Map();
+      const enrichedBids = await Promise.all(
+        activeBids.map(async (bid) => {
+          const [, contract, tokenId] = bid.tokenSetId.split(':');
+          let enrichedData = {
+            collectionSlug: 'N/A',
+            floorPrice: 'N/A',
+            topBid: 'N/A'
+          };
+          try {
+            if (collectionDataCache.has(contract)) {
+              enrichedData = { ...enrichedData, ...collectionDataCache.get(contract) };
+            } else {
+              const collectionResponse = await api.get(`/collections/v7?id=${contract}`);
+              const collection = collectionResponse.data.collections[0];
+              if (collection) {
+                enrichedData.collectionSlug = collection.slug;
+                enrichedData.floorPrice = collection.floorAsk?.price?.amount?.native?.toString() || 'N/A';
+                collectionDataCache.set(contract, { collectionSlug: enrichedData.collectionSlug, floorPrice: enrichedData.floorPrice });
+              }
+            }
+            const topBidResponse = await api.get(`/orders/bids/v6?token=${contract}:${tokenId}&sortBy=price&limit=1`);
+            if (topBidResponse.data.orders[0]?.price?.amount?.native) {
+              enrichedData.topBid = topBidResponse.data.orders[0].price.amount.native.toString();
+            }
+          } catch (e) { console.error(`Ошибка при обогащении ставки ${bid.id}:`, e.message); }
+          
+          return {
+            id: bid.id,
+            contractAddress: contract,
+            tokenId: tokenId,
+            bidPrice: bid.price.amount.native,
+            expiration: bid.expiration,
+            chain: 'mainnet',
+            ...enrichedData
+          };
+        })
+      );
+      return enrichedBids;
     } catch (error) {
-      console.error("Failed to fetch market data:", error.message);
-      return { success: false, ethPrice: 'N/A', gasPrice: 'N/A' };
+      console.error(`[get-temp-bids] Критическая ошибка:`, error.message);
+      return [];
     }
   });
 }
@@ -222,12 +213,11 @@ function registerIpcHandlers() {
 app.whenReady().then(() => {
   registerIpcHandlers();
   createWindow();
-  
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
 });

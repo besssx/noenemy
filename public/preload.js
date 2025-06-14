@@ -1,15 +1,17 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Твой рабочий список каналов + новый для Temp Bids
 const validInvokeChannels = [
   'get-wallets',
   'add-wallet',
   'delete-wallet',
   'place-bid',
-  'get-market-data'
+  'get-market-data',
+  'get-temp-bids' // <-- ДОБАВЛЕНО
 ];
 const validOnChannels = [ 
   'bid-status-update', 
-  'market-data-update' // Теперь только один канал для обновлений футера
+  'market-data-update'
 ];
 
 contextBridge.exposeInMainWorld('electronAPI', {
