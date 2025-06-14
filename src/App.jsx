@@ -5,7 +5,7 @@ import DashboardPage from './pages/DashboardPage';
 import TasksPage from './pages/TasksPage';
 import CollectionsPage from './pages/CollectionsPage';
 import LogsPage from './pages/LogsPage';
-import WalletsPage from './pages/WalletsPage'; // ИЗМЕНЕНИЕ: импортируем WalletsPage
+// import WalletsPage from './pages/WalletsPage'; // <-- УДАЛЯЕМ
 
 function App() {
   return (
@@ -15,7 +15,7 @@ function App() {
         <Route path="tasks" element={<TasksPage />} />
         <Route path="collections" element={<CollectionsPage />} />
         <Route path="logs" element={<LogsPage />} />
-        <Route path="wallets" element={<WalletsPage />} /> {/* ИЗМЕНЕНИЕ: роут на /wallets */}
+        {/* Роут для /wallets удален */}
       </Route>
     </Routes>
   );

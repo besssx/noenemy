@@ -20,10 +20,7 @@ function Navbar() {
         <li>
           <NavLink to="/logs" className="nav-link">Логи</NavLink>
         </li>
-        {/* ИЗМЕНЕНИЕ: ссылка и название */}
-        <li>
-          <NavLink to="/wallets" className="nav-link">Кошельки</NavLink>
-        </li>
+        {/* Ссылка 'Кошельки' удалена */}
       </ul>
     </nav>
   );
