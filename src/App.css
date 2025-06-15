@@ -60,8 +60,6 @@ body {
   font-weight: 500;
 }
 
-/* --- НОВЫЕ СТИЛИ --- */
-
 .main-content {
   display: flex;
   flex-direction: column;
@@ -86,6 +84,17 @@ body {
   background-color: #242424;
   border-top: 1px solid #333;
   font-size: 0.9em;
+  cursor: pointer;
+}
+
+.footer-section {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.footer-section.footer-market {
+    margin-left: auto;
 }
 
 .footer-item {
@@ -99,7 +108,6 @@ body {
   font-weight: 500;
 }
 
-/* ... остальные стили для карточек, таблиц и т.д. ... */
 .card {
   background-color: #2f2f2f;
   border-radius: 8px;
@@ -141,20 +149,41 @@ button {
   transition: border-color 0.25s;
 }
 
+.button-primary {
+    background-color: #646cff;
+    color: white;
+}
+
+.button-danger {
+  background-color: #ff4d4d;
+  color: white;
+  border-color: #ff4d4d;
+}
+
+.button-danger:hover {
+  border-color: #ff6666;
+}
+
 .wallets-table {
   width: 100%;
   border-collapse: collapse;
   margin-top: 20px;
 }
 
+/* --- ИЗМЕНЕНИЯ ЗДЕСЬ --- */
 .wallets-table th,
 .wallets-table td {
-  border: 1px solid #444;
-  padding: 8px 12px;
+  border-bottom: 1px solid #444;
+  padding: 6px 10px; /* Уменьшаем отступы */
   text-align: left;
+  font-size: 0.85em; /* Уменьшаем шрифт */
+  line-height: 1; /* Уменьшаем межстрочный интервал */
 }
 
-/* ... все предыдущие стили ... */
+.wallets-table th {
+  background-color: #3a3a3a;
+  font-weight: 600;
+}
 
 /* --- Стили для модального окна --- */
 .overlay {
@@ -193,17 +222,4 @@ button {
   color: #ccc;
   font-size: 1.5em;
   cursor: pointer;
-}
-
-/* --- Обновленные стили для футера --- */
-.footer {
-  /* ... старые стили ... */
-  justify-content: space-between; /* Распределяем контент по краям */
-  cursor: pointer; /* Показываем, что на него можно нажать */
-}
-
-.footer-section {
-  display: flex;
-  align-items: center;
-  gap: 20px;
 }

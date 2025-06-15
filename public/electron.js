@@ -17,7 +17,6 @@ const axios = require('axios');
 
 const store = new Store();
 
-// --- КОНФИГУРАЦИЯ СЕТЕЙ ---
 const chainConfigs = {
   mainnet: { name: 'mainnet', id: 1, viemChain: mainnet, reservoirBaseUrl: 'https://api.reservoir.tools', publicRpcUrl: process.env.ALCHEMY_MAINNET_RPC_URL, wethAddress: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2' },
   base: { name: 'base', id: 8453, viemChain: base, reservoirBaseUrl: 'https://api-base.reservoir.tools', publicRpcUrl: process.env.ALCHEMY_BASE_RPC_URL || 'https://mainnet.base.org', wethAddress: '0x4200000000000000000000000000000000000006' }
@@ -27,13 +26,12 @@ const activeChainName = process.env.CHAIN_NAME || 'base';
 const activeChainConfig = chainConfigs[activeChainName];
 console.log(`Приложение настроено для работы в сети: ${activeChainName}`);
 
-if (!process.env.RESERVOIR_API_KEY || !process.env.OPENSEA_API_KEY || !process.env.ALCHEMY_MAINNET_RPC_URL) {
-  console.error("ОШИБКА: Один или несколько ключей API/RPC URL не найдены в .env файле!");
+if (!process.env.RESERVOIR_API_KEY || !process.env.ALCHEMY_MAINNET_RPC_URL) {
+  console.error("ОШИБКА: Ключи API или RPC URL для Mainnet не найдены в .env файле!");
 }
 
-// --- КЛИЕНТЫ ---
 createClient({
-  chains: Object.values(chainConfigs).map(c => ({ id: c.id, baseApiUrl: c.reservoirBaseUrl, apiKey: process.env.RESERVOIR_API_KEY, })),
+  chains: [{ id: activeChainConfig.id, baseApiUrl: activeChainConfig.reservoirBaseUrl, apiKey: process.env.RESERVOIR_API_KEY, }],
   source: 'noenemy.app'
 });
 
@@ -50,7 +48,6 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-
   const startUrl = 'http://localhost:5173';
   win.loadURL(startUrl);
   startMarketDataSubscription(win);
@@ -59,7 +56,6 @@ function createWindow() {
 function startMarketDataSubscription(win) {
   let ethPrice = 'N/A';
   let lastEthPriceFetch = 0;
-
   mainnetPublicClient.watchBlocks({
     onBlock: async (block) => {
       try {
@@ -85,16 +81,19 @@ function registerIpcHandlers() {
   ipcMain.handle('get-wallets', async () => {
     const wallets = store.get('wallets', []);
     try {
-        return await Promise.all(wallets.map(async (wallet) => {
-            const ethBalance = await publicClient.getBalance({ address: wallet.address });
-            const wethBalance = await publicClient.readContract({
-              address: activeChainConfig.wethAddress,
-              abi: [{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}],
-              functionName: 'balanceOf',
-              args: [wallet.address]
-            });
-            return { ...wallet, ethBalance: parseFloat(formatEther(ethBalance)).toFixed(4), wethBalance: parseFloat(formatEther(wethBalance)).toFixed(4) };
-        }));
+        const walletsWithBalances = await Promise.all(
+            wallets.map(async (wallet) => {
+                const ethBalance = await publicClient.getBalance({ address: wallet.address });
+                const wethBalance = await publicClient.readContract({
+                  address: activeChainConfig.wethAddress,
+                  abi: [{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}],
+                  functionName: 'balanceOf',
+                  args: [wallet.address]
+                });
+                return { ...wallet, ethBalance: parseFloat(formatEther(ethBalance)).toFixed(4), wethBalance: parseFloat(formatEther(wethBalance)).toFixed(4) };
+            })
+        );
+        return walletsWithBalances;
     } catch (error) {
         return wallets.map(w => ({ ...w, ethBalance: 'Error', wethBalance: 'Error' }));
     }
@@ -126,8 +125,7 @@ function registerIpcHandlers() {
     try {
       const account = privateKeyToAccount(targetWallet.privateKey);
       const walletClient = createWalletClient({ account, chain: activeChainConfig.viemChain, transport: http() });
-      const reservoirClient = getClient();
-      await reservoirClient?.actions.placeBid({
+      await getClient()?.actions.placeBid({
         wallet: walletClient,
         bids: [{
           token: `${contractAddress}:${tokenId}`,
@@ -157,55 +155,39 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('get-temp-bids', async () => {
+    console.log('[get-temp-bids] Обработчик вызван.');
     const hardcodedAddress = '0x047AA61fB65Df27c219d67025DdAE0683CecC37D';
-    const chainToQuery = chainConfigs['mainnet'];
+    const mainnetConfig = chainConfigs['mainnet'];
+    
     try {
-      const api = axios.create({ baseURL: chainToQuery.reservoirBaseUrl, headers: { 'x-api-key': process.env.RESERVOIR_API_KEY } });
-      const response = await api.get(`/users/${hardcodedAddress}/bids/v1?status=active&limit=50`);
-      const activeBids = response.data.orders;
-      
-      const collectionDataCache = new Map();
-      const enrichedBids = await Promise.all(
-        activeBids.map(async (bid) => {
-          const [, contract, tokenId] = bid.tokenSetId.split(':');
-          let enrichedData = {
-            collectionSlug: 'N/A',
-            floorPrice: 'N/A',
-            topBid: 'N/A'
-          };
-          try {
-            if (collectionDataCache.has(contract)) {
-              enrichedData = { ...enrichedData, ...collectionDataCache.get(contract) };
-            } else {
-              const collectionResponse = await api.get(`/collections/v7?id=${contract}`);
-              const collection = collectionResponse.data.collections[0];
-              if (collection) {
-                enrichedData.collectionSlug = collection.slug;
-                enrichedData.floorPrice = collection.floorAsk?.price?.amount?.native?.toString() || 'N/A';
-                collectionDataCache.set(contract, { collectionSlug: enrichedData.collectionSlug, floorPrice: enrichedData.floorPrice });
-              }
-            }
-            const topBidResponse = await api.get(`/orders/bids/v6?token=${contract}:${tokenId}&sortBy=price&limit=1`);
-            if (topBidResponse.data.orders[0]?.price?.amount?.native) {
-              enrichedData.topBid = topBidResponse.data.orders[0].price.amount.native.toString();
-            }
-          } catch (e) { console.error(`Ошибка при обогащении ставки ${bid.id}:`, e.message); }
-          
-          return {
-            id: bid.id,
-            contractAddress: contract,
-            tokenId: tokenId,
-            bidPrice: bid.price.amount.native,
-            expiration: bid.expiration,
-            chain: 'mainnet',
-            ...enrichedData
-          };
-        })
-      );
-      return enrichedBids;
+        const apiUrl = `${mainnetConfig.reservoirBaseUrl}/users/${hardcodedAddress}/bids/v1`;
+        console.log(`[get-temp-bids] Запрашиваем URL: ${apiUrl} с лимитом 50`);
+
+        const api = axios.create({ baseURL: mainnetConfig.reservoirBaseUrl, headers: { 'x-api-key': process.env.RESERVOIR_API_KEY } });
+        const response = await api.get(`/users/${hardcodedAddress}/bids/v1`, { 
+            params: { status: 'active', limit: 50 } 
+        });
+        
+        const activeBids = response.data.orders;
+        console.log(`[get-temp-bids] Найдено ${activeBids.length} ставок.`);
+        
+        // Трансформируем данные прямо здесь
+        const formattedBids = activeBids.map(bid => {
+            const [, contract, tokenId] = bid.tokenSetId.split(':');
+            return {
+                id: bid.id,
+                contractAddress: contract,
+                tokenId: tokenId,
+                bidPrice: bid.price.amount.native,
+                expiration: bid.expiration,
+                createdAt: bid.createdAt,
+            };
+        });
+        return formattedBids;
+
     } catch (error) {
-      console.error(`[get-temp-bids] Критическая ошибка:`, error.message);
-      return [];
+        console.error(`[get-temp-bids] Ошибка при загрузке ставок:`, error.message);
+        return []; // В случае ошибки возвращаем пустой массив
     }
   });
 }
