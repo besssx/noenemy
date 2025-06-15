@@ -10,11 +10,10 @@ const formatExpiration = (timestamp) => {
 
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
   const diffHours = Math.ceil(diffTime / (1000 * 60 * 60));
-  const diffMinutes = Math.ceil(diffTime / (1000 * 60));
-
+  
   if (diffDays > 1) return `через ${diffDays} д.`;
-  if (diffHours > 1) return `через ${diffHours} ч.`;
-  return `через ${diffMinutes} мин.`;
+  if (diffHours > 0) return `через ${diffHours} ч.`;
+  return `через ${Math.ceil(diffTime / (1000 * 60))} мин.`;
 };
 
 function TempRealBidsPage() {
@@ -25,7 +24,7 @@ function TempRealBidsPage() {
   const loadBids = useCallback(async () => {
     if (isLoading) return;
     setIsLoading(true);
-    setStatus("Загрузка ставок...");
+    setStatus("Загрузка и обогащение данных...");
     try {
       const fetchedBids = await window.electronAPI.invoke('get-temp-bids');
       if (fetchedBids) {
@@ -41,16 +40,15 @@ function TempRealBidsPage() {
 
   useEffect(() => {
     loadBids();
-  }, []); // Пустой массив, чтобы запускалось один раз
+  }, []); 
 
   return (
     <div>
-      <h1>Мониторинг реальных ставок</h1>
-      <p>Отображение активных ставок с кошелька `0x047...`</p>
-      
+      <h1>Temp bids</h1>
+            
       <div className="card" style={{ maxWidth: '1200px', marginTop: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2>Активные ставки <span style={{fontSize: '0.7em', color: '#ccc'}}>({status})</span></h2>
+          <h2>Active bids <span style={{fontSize: '0.7em', color: '#ccc'}}>({status})</span></h2>
           <button onClick={loadBids} disabled={isLoading}>
             {isLoading ? 'Обновление...' : 'Обновить'}
           </button>
@@ -58,17 +56,20 @@ function TempRealBidsPage() {
         <table className="wallets-table">
           <thead>
             <tr>
+              <th>Коллекция</th>
               <th>Токен</th>
               <th>Наша ставка (WETH)</th>
+              <th>Топ ставка (WETH)</th>
               <th>Окончание</th>
             </tr>
           </thead>
           <tbody>
             {bids.map(bid => (
               <tr key={bid.id}>
+                <td>{bid.collectionSlug || '...'}</td>
                 <td>
                   <a 
-                    href={`https://opensea.io/assets/mainnet/${bid.contractAddress}/${bid.tokenId}`} 
+                    href={`https://opensea.io/assets/ethereum/${bid.contractAddress}/${bid.tokenId}`} 
                     target="_blank" 
                     rel="noopener noreferrer"
                   >
@@ -76,6 +77,10 @@ function TempRealBidsPage() {
                   </a>
                 </td>
                 <td>{bid.bidPrice}</td>
+                {/* Подсвечиваем топ ставку в зависимости от того, наша ли она */}
+                <td style={{ color: parseFloat(bid.topBid) > bid.bidPrice ? 'lightcoral' : 'lightgreen' }}>
+                    {bid.topBid}
+                </td>
                 <td>{formatExpiration(bid.expiration)}</td>
               </tr>
             ))}
