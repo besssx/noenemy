@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from 'react';
 import { useBids } from '../contexts/BidsContext';
+import BidSuggestion from '../components/BidSuggestion'; // <-- Import the new component
 
 const formatExpiration = (timestamp) => {
   if (!timestamp) return 'N/A';
@@ -89,7 +90,7 @@ function TempRealBidsPage() {
                 <tr>
                   <th>Token</th>
                   <th>Our Bid (WETH)</th>
-                  <th>Top Bid (WETH)</th>
+                  <th>Status</th>
                   <th>Expires</th>
                 </tr>
               </thead>
@@ -107,9 +108,7 @@ function TempRealBidsPage() {
                         </a>
                       </td>
                       <td>{bid.bidPrice}</td>
-                      <td style={{ color: parseFloat(bid.topBid) > bid.bidPrice ? 'lightcoral' : 'lightgreen' }}>
-                          {bid.topBid}
-                      </td>
+                      <td><BidSuggestion bid={bid} /></td>
                       <td>{formatExpiration(bid.expiration)}</td>
                     </tr>
                   );

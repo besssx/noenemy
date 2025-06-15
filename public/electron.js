@@ -156,6 +156,7 @@ function registerIpcHandlers() {
     }
   });
 
+
   ipcMain.handle('get-temp-bids', async () => {
     const hardcodedAddress = '0x047AA61fB65Df27c219d67025DdAE0683CecC37D';
     const mainnetConfig = chainConfigs['mainnet'];
@@ -170,27 +171,40 @@ function registerIpcHandlers() {
 
       for (const bid of activeBids) {
         const [, contract, tokenId] = bid.tokenSetId.split(':');
-        let enrichedData = { collectionSlug: 'N/A', collectionName: 'N/A', topBid: 'N/A' };
+        let enrichedData = {
+          collectionSlug: 'N/A',
+          collectionName: 'N/A',
+          topBid: 'N/A',
+          secondBestBid: null
+        };
         
         try {
-          const [collectionResponse, topBidResponse] = await Promise.all([
+          const [collectionResponse, topBidsResponse] = await Promise.all([
             collectionCache.has(contract) 
                 ? Promise.resolve(collectionCache.get(contract))
                 : api.get(`/collections/v7?id=${contract}`),
-            api.get(`/orders/bids/v6`, { params: { token: `${contract}:${tokenId}`, sortBy: 'price', limit: 1 } })
+            api.get(`/orders/bids/v6`, { params: { token: `${contract}:${tokenId}`, sortBy: 'price', limit: 2 } })
           ]);
           
           if (collectionResponse?.data?.collections?.[0]) {
             const collection = collectionResponse.data.collections[0];
-            enrichedData.collectionSlug = collection.slug;
             enrichedData.collectionName = collection.name;
+            enrichedData.collectionSlug = collection.slug;
             if (!collectionCache.has(contract)) {
               collectionCache.set(contract, { data: { collections: [collection] } });
             }
           }
 
-          if (topBidResponse?.data?.orders?.[0]) {
-            enrichedData.topBid = topBidResponse.data.orders[0].price.amount.native.toString();
+          if (topBidsResponse?.data?.orders) {
+            const bidsOrderBook = topBidsResponse.data.orders;
+            if (bidsOrderBook.length > 0) {
+              enrichedData.topBid = bidsOrderBook[0].price.amount.native.toString();
+            }
+            const ourBidPrice = parseFloat(bid.price.amount.native);
+            const topBidPrice = bidsOrderBook.length > 0 ? parseFloat(bidsOrderBook[0].price.amount.native) : 0;
+            if (ourBidPrice >= topBidPrice && bidsOrderBook.length > 1) {
+              enrichedData.secondBestBid = bidsOrderBook[1].price.amount.native.toString();
+            }
           }
         } catch (e) {
           console.error(`Error enriching bid ${bid.id}:`, e.message);
