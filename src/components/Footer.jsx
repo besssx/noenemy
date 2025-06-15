@@ -7,7 +7,6 @@ function Footer() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [defaultWallet, setDefaultWallet] = useState(null);
 
-  // Эта функция теперь будет запрашивать ТОЛЬКО кошельки
   const loadWallets = async () => {
     const wallets = await window.electronAPI.invoke('get-wallets');
     if (wallets.length > 0) {
@@ -17,9 +16,7 @@ function Footer() {
     }
   };
   
-  // Этот эффект отвечает только за рыночные данные и таймер
   useEffect(() => {
-    // Первоначальный запрос рыночных данных
     const getInitialMarketData = async () => {
       const result = await window.electronAPI.invoke('get-market-data');
       if (result.success) {
@@ -28,7 +25,6 @@ function Footer() {
     };
     getInitialMarketData();
 
-    // Слушатель для real-time обновлений от бэкенда
     const removeDataListener = window.electronAPI.receive('market-data-update', (data) => {
       if (data.success) {
         setMarketData({ ethPrice: data.ethPrice, gasPrice: data.gasPrice });
@@ -36,7 +32,6 @@ function Footer() {
       setCountdown(12);
     });
 
-    // Визуальный таймер
     const timer = setInterval(() => {
       setCountdown(prev => (prev > 0 ? prev - 1 : 0));
     }, 1000);
@@ -47,14 +42,12 @@ function Footer() {
     };
   }, []);
 
-  // Этот эффект отвечает только за загрузку кошельков
   useEffect(() => {
     loadWallets();
   }, []);
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
-    // Перезагружаем кошельки после закрытия окна, на случай если их удалили/добавили
     loadWallets();
   }
 
@@ -78,7 +71,7 @@ function Footer() {
               </div>
             </>
           ) : (
-            <div className="footer-item">Нажмите, чтобы добавить кошелек</div>
+            <div className="footer-item">Click to add a wallet</div>
           )}
         </div>
         <div className="footer-section footer-market">

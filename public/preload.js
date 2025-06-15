@@ -1,13 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Твой рабочий список каналов + новый для Temp Bids
 const validInvokeChannels = [
   'get-wallets',
   'add-wallet',
   'delete-wallet',
   'place-bid',
   'get-market-data',
-  'get-temp-bids' // <-- ДОБАВЛЕНО
+  'get-temp-bids',
+  'open-external-link' // <-- ДОБАВЛЕНО
 ];
 const validOnChannels = [ 
   'bid-status-update', 

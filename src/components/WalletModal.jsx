@@ -23,25 +23,25 @@ function WalletModal({ isOpen, onRequestClose }) {
 
   const handleAddWallet = async () => {
     if (!newWalletName || !newWalletKey) {
-      setMessage('Ошибка: Имя и приватный ключ не могут быть пустыми.');
+      setMessage('Error: Name and private key cannot be empty.');
       return;
     }
-    setMessage('Добавляем кошелек...');
+    setMessage('Adding wallet...');
     const result = await window.electronAPI.invoke('add-wallet', newWalletName, newWalletKey);
     if (result.success) {
       setNewWalletName('');
       setNewWalletKey('');
       await loadWallets();
-      setMessage('Кошелек успешно добавлен!');
+      setMessage('Wallet added successfully!');
     } else {
-      setMessage(`Ошибка: ${result.message}`);
+      setMessage(`Error: ${result.message}`);
     }
   };
   
   const handleDeleteWallet = async (address) => {
     await window.electronAPI.invoke('delete-wallet', address);
     await loadWallets();
-    setMessage('Кошелек удален.');
+    setMessage('Wallet deleted.');
   };
 
   return (
@@ -52,36 +52,36 @@ function WalletModal({ isOpen, onRequestClose }) {
       overlayClassName="overlay"
       contentLabel="Wallet Manager"
     >
-      <h1>Управление кошельками</h1>
+      <h1>Wallet Management</h1>
       <button onClick={onRequestClose} className="close-button">X</button>
       
       <div className="card">
-        <h2>Добавить новый кошелек</h2>
+        <h2>Add New Wallet</h2>
         <div className="input-group">
-          <label>Имя кошелька</label>
-          <input type="text" value={newWalletName} onChange={(e) => setNewWalletName(e.target.value)} placeholder="Например, 'Мой главный'" />
+          <label>Wallet Name</label>
+          <input type="text" value={newWalletName} onChange={(e) => setNewWalletName(e.target.value)} placeholder="e.g., 'My Main Wallet'" />
         </div>
         <div className="input-group">
-          <label>Приватный ключ</label>
+          <label>Private Key</label>
           <input type="password" value={newWalletKey} onChange={(e) => setNewWalletKey(e.target.value)} placeholder="0x..." />
         </div>
-        <button onClick={handleAddWallet}>Добавить</button>
+        <button onClick={handleAddWallet}>Add</button>
         {message && <p>{message}</p>}
       </div>
 
       <div className="card" style={{ marginTop: '20px' }}>
-        <h2>Сохраненные кошельки</h2>
+        <h2>Saved Wallets</h2>
         <button onClick={loadWallets} disabled={isLoading}>
-          {isLoading ? 'Обновление...' : 'Обновить балансы'}
+          {isLoading ? 'Refreshing...' : 'Refresh Balances'}
         </button>
         <table className="wallets-table">
           <thead>
             <tr>
-              <th>Имя</th>
-              <th>Адрес</th>
+              <th>Name</th>
+              <th>Address</th>
               <th>ETH</th>
               <th>WETH</th>
-              <th>Действия</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -91,7 +91,7 @@ function WalletModal({ isOpen, onRequestClose }) {
                 <td><a href={`https://basescan.org/address/${wallet.address}`} target="_blank" rel="noopener noreferrer">{wallet.address.substring(0, 6)}...{wallet.address.substring(wallet.address.length - 4)}</a></td>
                 <td>{wallet.ethBalance}</td>
                 <td>{wallet.wethBalance}</td>
-                <td><button onClick={() => handleDeleteWallet(wallet.address)} className="button-danger">Удалить</button></td>
+                <td><button onClick={() => handleDeleteWallet(wallet.address)} className="button-danger">Delete</button></td>
               </tr>
             ))}
           </tbody>

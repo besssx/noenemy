@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 require('dotenv').config();
@@ -25,10 +25,10 @@ const chainConfigs = {
 
 const activeChainName = process.env.CHAIN_NAME || 'base';
 const activeChainConfig = chainConfigs[activeChainName];
-console.log(`Приложение настроено для работы в сети: ${activeChainName}`);
+console.log(`Application configured to work on the network: ${activeChainName}`);
 
 if (!process.env.RESERVOIR_API_KEY || !process.env.OPENSEA_API_KEY) {
-  console.error("ОШИБКА: RESERVOIR_API_KEY или OPENSEA_API_KEY не найдены в .env файле!");
+  console.error("ERROR: RESERVOIR_API_KEY or OPENSEA_API_KEY not found in .env file!");
 }
 
 createClient({
@@ -73,7 +73,7 @@ function startMarketDataSubscription(win) {
         }
         win.webContents.send('market-data-update', { success: true, ethPrice, gasPrice });
       } catch (error) {
-        console.error('Ошибка в watchBlocks (getGasPrice):', error.message);
+        console.error('Error in watchBlocks (getGasPrice):', error.message);
       }
     }
   });
@@ -99,12 +99,12 @@ function registerIpcHandlers() {
       const address = account.address;
       const currentWallets = store.get('wallets', []);
       if (currentWallets.some(w => w.address === address)) {
-        return { success: false, message: 'Кошелек уже существует.' };
+        return { success: false, message: 'Wallet already exists.' };
       }
       store.set('wallets', [...currentWallets, { name, address, privateKey }]);
       return { success: true };
     } catch (error) {
-      return { success: false, message: 'Неверный приватный ключ.' };
+      return { success: false, message: 'Invalid private key.' };
     }
   });
 
@@ -117,7 +117,7 @@ function registerIpcHandlers() {
   ipcMain.handle('place-bid', async (event, { walletAddress, contractAddress, tokenId, bidPrice, expirationTime }) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const targetWallet = store.get('wallets', []).find(w => w.address === walletAddress);
-    if (!targetWallet) return { success: false, message: 'Выбранный кошелек не найден.' };
+    if (!targetWallet) return { success: false, message: 'Selected wallet not found.' };
     try {
       const account = privateKeyToAccount(targetWallet.privateKey);
       const walletClient = createWalletClient({ account, chain: activeChainConfig.viemChain, transport: http() });
@@ -136,11 +136,11 @@ function registerIpcHandlers() {
         onProgress: (steps) => {
           const currentStep = steps.find(step => step.status === 'incomplete');
           if (currentStep && !win.isDestroyed()) {
-            win.webContents.send('bid-status-update', `Выполняется: ${currentStep.action}`);
+            win.webContents.send('bid-status-update', `Executing: ${currentStep.action}`);
           }
         },
       });
-      return { success: true, message: `Ставка успешно размещена в сети ${activeChainName}!` };
+      return { success: true, message: `Bid successfully placed on network ${activeChainName}!` };
     } catch (e) {
       return { success: false, message: e.message };
     }
@@ -163,14 +163,14 @@ function registerIpcHandlers() {
       const api = axios.create({ baseURL: mainnetConfig.reservoirBaseUrl, headers: { 'x-api-key': process.env.RESERVOIR_API_KEY } });
       const response = await api.get(`/users/${hardcodedAddress}/bids/v1`, { params: { status: 'active', limit: 50 } });
       const activeBids = response.data.orders;
-      console.log(`[get-temp-bids] Найдено ${activeBids.length} ставок. Начинаем обогащение...`);
+      console.log(`[get-temp-bids] Found ${activeBids.length} bids. Starting enrichment...`);
       
       const enrichedBids = [];
       const collectionCache = new Map();
 
       for (const bid of activeBids) {
         const [, contract, tokenId] = bid.tokenSetId.split(':');
-        let enrichedData = { collectionSlug: 'N/A', topBid: 'N/A' };
+        let enrichedData = { collectionSlug: 'N/A', collectionName: 'N/A', topBid: 'N/A' };
         
         try {
           const [collectionResponse, topBidResponse] = await Promise.all([
@@ -181,10 +181,11 @@ function registerIpcHandlers() {
           ]);
           
           if (collectionResponse?.data?.collections?.[0]) {
-            const slug = collectionResponse.data.collections[0].slug;
-            enrichedData.collectionSlug = slug;
+            const collection = collectionResponse.data.collections[0];
+            enrichedData.collectionSlug = collection.slug;
+            enrichedData.collectionName = collection.name;
             if (!collectionCache.has(contract)) {
-              collectionCache.set(contract, { data: { collections: [{ slug }] } });
+              collectionCache.set(contract, { data: { collections: [collection] } });
             }
           }
 
@@ -192,7 +193,7 @@ function registerIpcHandlers() {
             enrichedData.topBid = topBidResponse.data.orders[0].price.amount.native.toString();
           }
         } catch (e) {
-          console.error(`Ошибка при обогащении ставки ${bid.id}:`, e.message);
+          console.error(`Error enriching bid ${bid.id}:`, e.message);
         }
         
         enrichedBids.push({
@@ -205,17 +206,21 @@ function registerIpcHandlers() {
           ...enrichedData,
         });
         
-        console.log(`[Enricher] Обработана ставка на токен #${tokenId}. Пауза 1 сек.`);
-        await sleep(1000);
+        console.log(`[Enricher] Processed bid for token #${tokenId}. Pausing for 0.5 sec.`);
+        await sleep(500);
       }
       
-      console.log('[get-temp-bids] Обогащение завершено.');
+      console.log('[get-temp-bids] Enrichment complete.');
       return enrichedBids;
 
     } catch (error) {
-      console.error(`[get-temp-bids] Критическая ошибка:`, error.message);
+      console.error(`[get-temp-bids] Critical error:`, error.message);
       return [];
     }
+  });
+
+  ipcMain.handle('open-external-link', async (event, url) => {
+    await shell.openExternal(url);
   });
 }
 

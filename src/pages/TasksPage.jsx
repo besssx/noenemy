@@ -1,27 +1,18 @@
 import React, { useState, useEffect } from 'react';
 
 function TasksPage() {
-  // Состояния для полей ввода
-  const [contractAddress, setContractAddress] = useState('0xac52bf5b51a46e319a103c52a1c50e27c44d054e'); // Onchain Gaias on Base
+  const [contractAddress, setContractAddress] = useState('0xac52bf5b51a46e319a103c52a1c50e27c44d054e');
   const [tokenId, setTokenId] = useState('');
   const [bidPrice, setBidPrice] = useState('');
-  
-  // Состояния для кошельков
   const [wallets, setWallets] = useState([]);
   const [selectedWallet, setSelectedWallet] = useState('');
-
-  // Новое состояние для срока действия ставки
   const [expiration, setExpiration] = useState('1h');
-  
-  // Состояние для отображения статуса
-  const [statusMessage, setStatusMessage] = useState('Ожидание новой задачи...');
+  const [statusMessage, setStatusMessage] = useState('Waiting for a new task...');
 
-  // Загружаем кошельки при монтировании компонента
   useEffect(() => {
     const loadWallets = async () => {
       const savedWallets = await window.electronAPI.invoke('get-wallets');
       setWallets(savedWallets);
-      // Если кошельки есть, выбираем первый по умолчанию
       if (savedWallets.length > 0) {
         setSelectedWallet(savedWallets[0].address);
       }
@@ -29,27 +20,24 @@ function TasksPage() {
     loadWallets();
   }, []);
 
-  // Устанавливаем слушателя для промежуточных статусов
   useEffect(() => {
     const removeListener = window.electronAPI.receive('bid-status-update', (message) => {
       setStatusMessage(message);
     });
-    // Эта функция будет вызвана при уходе со страницы для очистки
     return removeListener;
   }, []);
 
   const handlePlaceBid = async () => {
     if (!selectedWallet) {
-      setStatusMessage('Ошибка: Не выбран кошелек. Добавьте его на вкладке "Кошельки".');
+      setStatusMessage("Error: No wallet selected. Please add one in the 'Wallets' tab.");
       return;
     }
     if (!contractAddress || !tokenId || !bidPrice) {
-      setStatusMessage('Ошибка: Заполните все поля для ставки.');
+      setStatusMessage('Error: Please fill in all fields for the bid.');
       return;
     }
-    setStatusMessage('Отправка команды на бэкенд...');
+    setStatusMessage('Sending command to backend...');
     
-    // Рассчитываем временную метку UNIX для срока истечения
     const now = Math.floor(Date.now() / 1000);
     let expirationTime;
     switch (expiration) {
@@ -59,7 +47,7 @@ function TasksPage() {
       case '1d': expirationTime = now + 24 * 60 * 60; break;
       case '7d': expirationTime = now + 7 * 24 * 60 * 60; break;
       case '1mo': expirationTime = now + 30 * 24 * 60 * 60; break;
-      default: expirationTime = now + 24 * 60 * 60; // По умолчанию 1 день
+      default: expirationTime = now + 24 * 60 * 60;
     }
     
     const result = await window.electronAPI.invoke('place-bid', {
@@ -67,26 +55,25 @@ function TasksPage() {
       contractAddress,
       tokenId,
       bidPrice,
-      expirationTime: expirationTime.toString(), // Передаем на бэкенд
+      expirationTime: expirationTime.toString(),
     });
 
-    // Отображаем финальный статус из ответа
     if (result.success) {
-      setStatusMessage(`УСПЕХ: ${result.message}`);
+      setStatusMessage(`SUCCESS: ${result.message}`);
     } else {
-      setStatusMessage(`ОШИБКА: ${result.message}`);
+      setStatusMessage(`ERROR: ${result.message}`);
     }
   };
 
   return (
     <div>
-      <h1>Задачи</h1>
+      <h1>Tasks</h1>
       
       <div className="card" style={{ maxWidth: '600px' }}>
-        <h2>Новая задача: Сделать ставку</h2>
+        <h2>New Task: Place a Bid</h2>
 
         <div className="input-group">
-          <label>Кошелек для ставки</label>
+          <label>Wallet for Bidding</label>
           <select value={selectedWallet} onChange={(e) => setSelectedWallet(e.target.value)}>
             {wallets.length > 0 ? (
               wallets.map(wallet => (
@@ -95,13 +82,13 @@ function TasksPage() {
                 </option>
               ))
             ) : (
-              <option disabled>Нет доступных кошельков</option>
+              <option disabled>No wallets available</option>
             )}
           </select>
         </div>
 
         <div className="input-group">
-          <label>Адрес контракта</label>
+          <label>Contract Address</label>
           <input 
             type="text" 
             placeholder="0x..."
@@ -110,7 +97,7 @@ function TasksPage() {
           />
         </div>
         <div className="input-group">
-          <label>ID Токена</label>
+          <label>Token ID</label>
           <input 
             type="text" 
             placeholder="12345"
@@ -119,7 +106,7 @@ function TasksPage() {
           />
         </div>
         <div className="input-group">
-          <label>Цена ставки (WETH)</label>
+          <label>Bid Price (WETH)</label>
           <input 
             type="text" 
             placeholder="0.001"
@@ -129,22 +116,22 @@ function TasksPage() {
         </div>
 
         <div className="input-group">
-            <label>Срок действия ставки</label>
+            <label>Bid Expiration</label>
             <select value={expiration} onChange={(e) => setExpiration(e.target.value)}>
-                <option value="1m">1 минута</option>
-                <option value="5m">5 минут</option>
-                <option value="1h">1 час</option>
-                <option value="1d">1 день</option>
-                <option value="7d">7 дней</option>
-                <option value="1mo">1 месяц</option>
+                <option value="1m">1 minute</option>
+                <option value="5m">5 minutes</option>
+                <option value="1h">1 hour</option>
+                <option value="1d">1 day</option>
+                <option value="7d">7 days</option>
+                <option value="1mo">1 month</option>
             </select>
         </div>
 
-        <button onClick={handlePlaceBid} className="button-primary">Сделать ставку</button>
+        <button onClick={handlePlaceBid} className="button-primary">Place Bid</button>
       </div>
 
       <div className="card" style={{ maxWidth: '600px', marginTop: '20px' }}>
-        <h2>Статус выполнения</h2>
+        <h2>Execution Status</h2>
         <p style={{ color: 'lightgreen', wordBreak: 'break-word' }}>{statusMessage}</p>
       </div>
     </div>

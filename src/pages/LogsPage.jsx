@@ -3,8 +3,8 @@ import React from 'react';
 function LogsPage() {
   return (
     <div>
-      <h1>Логи</h1>
-      <p>Здесь будет отображаться детальный лог всех событий.</p>
+      <h1>Logs</h1>
+      <p>A detailed log of all events will be displayed here.</p>
     </div>
   );
 }
